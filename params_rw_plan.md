@@ -62,19 +62,16 @@
 
 ```cpp
 QString txCmd;
-int fingerSlot = -1;
 double scale = 1.0;
-int txPayloadOffset = 0;
 ```
 
 含义：
 
 - `txCmd`：写入/读回使用的电机命令名，例如 `CAN_CMD_SET_LIMIT_CURRENT`
-- `fingerSlot`：目标手指，范围 `0~4`
 - `scale`：UI 值到协议值的缩放比例
-- `txPayloadOffset`：为后续协议扩展预留，当前配置项为 `0`
+- 目标手指不再由 JSON 的 `finger_slot` 指定，而是由 `group: Finger_N` 优先推导，必要时回退到 `FN_` 参数名前缀
 
-后续整理中没有保留 `tx_pc_cmd` 字段。PC 命令类型由 `ProtocolParser::buildSetDriveConfig()` 根据 `MotCmd` 统一路由，避免 JSON 中出现无效路由字段。
+后续整理中没有保留 `tx_pc_cmd`、`finger_slot`、`tx_payload_offset` 字段。PC 命令类型由 `ProtocolParser::buildSetDriveConfig()` 根据 `MotCmd` 统一路由，目标手指由参数分组/命名推导，避免 JSON 中出现重复路由字段。
 
 ### 2. 参数 JSON 合并
 
@@ -103,20 +100,17 @@ int txPayloadOffset = 0;
     "min": 0,
     "max": 1000,
     "description": "拇指电流限制",
-    "rx_source_cmd": "CAN_CMD_SET_LIMIT_CURRENT",
     "data_offset": -1,
     "data_count": 1,
     "tx_cmd": "CAN_CMD_SET_LIMIT_CURRENT",
-    "finger_slot": 0,
-    "scale": 10,
-    "tx_payload_offset": 0
+    "scale": 10
 }
 ```
 
 说明：
 
 - RO 状态参数继续使用 `data_offset >= 0`
-- RW 配置参数使用 `tx_cmd` + `finger_slot`
+- RW 配置参数使用 `tx_cmd` + `group/name` 推导出的手指槽位
 - RW 配置参数的 `data_offset` 固定为 `-1`
 - 读取和写入都通过 `tx_cmd` 分发，而不是复用 `CAN_CMD_WRITE_PARA + data_offset`
 
@@ -126,10 +120,10 @@ int txPayloadOffset = 0;
 
 主要变化：
 
-- 导入 JSON 时解析 `tx_cmd`、`finger_slot`、`scale`、`tx_payload_offset`
-- 导出 JSON 时保留上述字段
+- 导入 JSON 时解析 `tx_cmd`、`scale`
+- 导出 JSON 时保留上述字段；RW 行不再导出 `rx_source_cmd`、`finger_slot`、`tx_payload_offset`
 - 表格列：`Index, Name, Group, Type, Access, Value, Unit, Min, Max, Cmd, Offset, Count, Description`（13 列）
-- `Cmd` 为 UI 合并列：驱动配置 RW 显示 `tx_cmd`；RO 状态项显示 `rx_source_cmd`；JSON 仍保留 `rx_source_cmd` / `tx_cmd` 两个字段
+- `Cmd` 为 UI 合并列：驱动配置 RW 显示 `tx_cmd`；RO 状态项显示 `rx_source_cmd`；JSON 中 RO 行使用 `rx_source_cmd`，RW 行使用 `tx_cmd`
 - 驱动配置 RW 行（`tx_cmd` 非空）仅 `Value` 可编辑，协议元数据列锁定
 - `Description` 显示短中文名；完整枚举说明通过单元格 tooltip 展示
 - `CAN_CMD_SET_CONTROL_MODE` 支持中文/枚举式输入
@@ -150,7 +144,7 @@ int txPayloadOffset = 0;
 | 参数类型 | 识别方式 | 读取路径 | 写入路径 |
 | --- | --- | --- | --- |
 | RO 状态参数 | 无 `tx_cmd`，有 `data_offset` | `buildGetStatus()` | 不写 |
-| RW 配置参数 | 有 `tx_cmd`，有 `finger_slot` | `buildReadDriveConfig()` | `buildSetDriveConfig()` |
+| RW 配置参数 | 有 `tx_cmd`，可从 `group/name` 推导手指 | `buildReadDriveConfig()` | `buildSetDriveConfig()` |
 | 旧普通写参 | 非驱动配置，`data_offset >= 0` | 旧状态读取 | `cmdBuildWritePara(..., CAN_CMD_WRITE_PARA, data_offset + value)` |
 
 关键点：
@@ -248,26 +242,6 @@ QByteArray buildReadDriveConfig(MotCmd motorCmd, FingerIndex fingerIndex);
 4. RW 配置项可单项读写或批量写入。
 5. 写入 RW 配置项后，主窗口会继续入队 `buildSaveParam()`，用于保存到 EEPROM。
 
-## 已发现问题与修复计划
-
-提交 `486db171` 联调后暴露的 UI 问题及修复策略：
-
-| 问题 | 根因 | 修复 |
-| --- | --- | --- |
-| 新增 RW 行所有列可编辑 | `updateTableRow()` 默认除 Index 外均可编辑 | 识别 `tx_cmd` 非空的驱动配置行，仅 `Value` 可编辑 |
-| Description 显示被截断 | `RxCmd`/`TxCmd` 各占 260px，挤压最后一列 | UI 合并为单列 `Cmd`；`description` 存短名，tooltip 显示完整说明 |
-| RxCmd 与 TxCmd 重复 | 50 个 RW 项读写均走同一 `tx_cmd` | UI 显示 `Cmd`；JSON 保留双字段，避免格式迁移 |
-
-执行顺序：先更新本文档，再改 `paramtablewindow.cpp` 与 `params_20260511_174142.json`。
-
-## 风险与注意事项
-
-- `Read All` / `Update` 会触发状态读取和 50 个配置读回，串口流量比纯 RO 状态表更大。
-- `Write All` 只会写 `readonly == false` 的参数，状态项不会被误写。
-- 保护阈值类参数（过温、过压、欠压、电流/速度/位置限制）需要实机确认合理范围。
-- `CAN_CMD_SET_CONTROL_MODE` 同时存在全手设置和单指设置两个入口，测试时需要明确使用的是哪条路径。
-- 驱动配置 RW 行的 `Name/Group/Type/Cmd/Offset` 等元数据不应在表格内修改，应通过 JSON 维护。
-- 无硬件环境下只能完成构建和 JSON/逻辑检查，实际读写回包、EEPROM 持久化仍需实机验证。
 
 ## 验证记录
 
@@ -282,7 +256,7 @@ RW 修复后额外检查项：
 - 导入参数表后，驱动配置 RW 行仅 `Value` 可双击编辑。
 - `Cmd` 列显示正确命令名（如 `CAN_CMD_SET_LIMIT_CURRENT`）。
 - `F0_control_mode` 等行的 `Description` 显示短名，悬停可见完整模式枚举。
-- 读取/写入仍走 `tx_cmd` + `finger_slot` 路径，不受 UI 列合并影响。
+- 读取/写入仍走 `tx_cmd` + `group/name` 推导手指路径，不受 UI 列合并影响。
 
 建议实机验证顺序：
 
