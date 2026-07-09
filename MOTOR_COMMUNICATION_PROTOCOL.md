@@ -215,20 +215,21 @@ UART_FRAME_PARA_UPDATE_TRIG_CFG = 0x20
 发送帧：
 
 ```
-AA 55 0F 20 MOT_ID trigger_relation trigger_channel_A trigger_condition_A custom_value_A[4] trigger_channel_B trigger_condition_B custom_value_B[4] CHK_L CHK_H
+AA 55 10 20 MOT_ID display_channel trigger_relation trigger_channel_A trigger_condition_A custom_value_A[4] trigger_channel_B trigger_condition_B custom_value_B[4] CHK_L CHK_H
 ```
 
 payload：
 
 | 偏移 | 字段 | 长度 | 说明 |
 |------|------|------|------|
-| 0 | `trigger_relation` | 1 | 条件关系，从 0 开始 |
-| 1 | `trigger_channel_A` | 1 | A 触发通道，从 0 开始 |
-| 2 | `trigger_condition_A` | 1 | A 触发条件，从 0 开始 |
-| 3~6 | `custom_value_A` | 4 | A 阈值放大 100 后的 int32，小端 |
-| 7 | `trigger_channel_B` | 1 | B 触发通道，从 0 开始 |
-| 8 | `trigger_condition_B` | 1 | B 触发条件，从 0 开始 |
-| 9~12 | `custom_value_B` | 4 | B 阈值放大 100 后的 int32，小端 |
+| 0 | `display_channel` | 1 | 显示/采样通道，从 0 开始，决定触发后反馈哪一路数据 |
+| 1 | `trigger_relation` | 1 | 条件关系，从 0 开始 |
+| 2 | `trigger_channel_A` | 1 | A 触发对象，从 0 开始 |
+| 3 | `trigger_condition_A` | 1 | A 触发条件，从 0 开始 |
+| 4~7 | `custom_value_A` | 4 | A 阈值放大 100 后的 int32，小端 |
+| 8 | `trigger_channel_B` | 1 | B 触发对象，从 0 开始 |
+| 9 | `trigger_condition_B` | 1 | B 触发条件，从 0 开始 |
+| 10~13 | `custom_value_B` | 4 | B 阈值放大 100 后的 int32，小端 |
 
 条件关系：
 
@@ -239,7 +240,7 @@ payload：
 | `2` | `A&&B` | 条件 A 与条件 B 同时成立 |
 | `3` | `A||B` | 条件 A 或条件 B 任一成立 |
 
-触发通道：
+通道/触发对象：
 
 | 值 | 通道 |
 |----|------|
@@ -267,7 +268,7 @@ payload：
 trigger_channel_value trigger_condition custom_value
 ```
 
-完整触发表达式由 `trigger_relation` 选择 `A`、`B`、`A&&B` 或 `A||B`。例如 `iq > 20.00 && vel < 100.00`：`trigger_relation=2`，A 条件 `trigger_channel_A=3`、`trigger_condition_A=0`、`custom_value_A=2000`，B 条件 `trigger_channel_B=5`、`trigger_condition_B=1`、`custom_value_B=10000`。上位机输入最多两位小数，下发前执行 `round(input * 100)`，再按 int32 小端写入对应的 `custom_value[4]`。自定义等待不占用 `custom_value`，如需支持应后续单独增加字段或单独配置命令。
+完整触发表达式由 `trigger_relation` 选择 `A`、`B`、`A&&B` 或 `A||B`，显示数据由 `display_channel` 单独选择。例如显示 `iq`，触发条件为 `iq > 20.00 && vel < 100.00`：`display_channel=3`，`trigger_relation=2`，A 条件 `trigger_channel_A=3`、`trigger_condition_A=0`、`custom_value_A=2000`，B 条件 `trigger_channel_B=5`、`trigger_condition_B=1`、`custom_value_B=10000`。上位机输入最多两位小数，下发前执行 `round(input * 100)`，再按 int32 小端写入对应的 `custom_value[4]`。自定义等待不占用 `custom_value`，如需支持应后续单独增加字段或单独配置命令。
 
 ### 6.2 触发反馈帧
 
@@ -327,6 +328,7 @@ display_value = value / 10.0
 |------|----|
 | `FRAME_ID` | `20` |
 | `MOT_ID` | `01` |
+| `display_channel` | `03`，即显示 `iq` |
 | `trigger_relation` | `02`，即 `A&&B` |
 | `trigger_channel_A` | `03`，即 `iq` |
 | `trigger_condition_A` | `00`，即 `>` |
@@ -338,7 +340,7 @@ display_value = value / 10.0
 完整帧：
 
 ```
-AA 55 0F 20 01 02 03 00 D0 07 00 00 05 01 10 27 00 00 49 01
+AA 55 10 20 01 03 02 03 00 D0 07 00 00 05 01 10 27 00 00 4D 01
 ```
 
 触发后反馈第 0 包数据：
