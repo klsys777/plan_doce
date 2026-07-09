@@ -256,7 +256,7 @@ payload：
 
 | 值 | 对象 | 说明 |
 |----|------|------|
-| `0` | 空 | 无条件触发。下位机收到任一触发对象为“空”时直接触发，忽略对应 `trigger_condition` 和 `custom_value` |
+| `0` | NULL | 无条件触发。下位机收到任一触发对象为“NULL”时直接触发，忽略对应 `trigger_condition` 和 `custom_value` |
 | `1` | `ia` | A 相电流 |
 | `2` | `ib` | B 相电流 |
 | `3` | `ic` | C 相电流 |
@@ -315,7 +315,7 @@ payload：
 trigger_channel_value trigger_condition custom_value
 ```
 
-完整触发表达式由 `trigger_relation` 选择 `A`、`B`、`A&&B` 或 `A||B`，显示数据由 `display_channel` 单独选择。若触发对象为“空”，下位机收到配置后直接触发，`trigger_condition` 和 `custom_value` 不参与判断。若触发对象为 `error`，上位机将对应 `custom_value` 填为 `FF FF 00 00`，任意非 0 错误码都会触发。例如显示 `iq`，触发条件为 `iq > 20.00 && vel < 100.00`：`display_channel=3`，`trigger_relation=2`，A 条件 `trigger_channel_A=4`、`trigger_condition_A=0`、`custom_value_A=2000`，B 条件 `trigger_channel_B=6`、`trigger_condition_B=1`、`custom_value_B=10000`。上位机输入最多两位小数，下发前执行 `round(input * 100)`，再按 int32 小端写入对应的 `custom_value[4]`。自定义等待不占用 `custom_value`，如需支持应后续单独增加字段或单独配置命令。
+完整触发表达式由 `trigger_relation` 选择 `A`、`B`、`A&&B` 或 `A||B`，显示数据由 `display_channel` 单独选择。若触发对象为“NULL”，下位机收到配置后直接触发，`trigger_condition` 和 `custom_value` 不参与判断。若触发对象为 `error`，上位机将对应 `custom_value` 填为 `FF FF 00 00`，任意非 0 错误码都会触发。例如显示 `iq`，触发条件为 `iq > 20.00 && vel < 100.00`：`display_channel=3`，`trigger_relation=2`，A 条件 `trigger_channel_A=4`、`trigger_condition_A=0`、`custom_value_A=2000`，B 条件 `trigger_channel_B=6`、`trigger_condition_B=1`、`custom_value_B=10000`。上位机输入最多两位小数，下发前执行 `round(input * 100)`，再按 int32 小端写入对应的 `custom_value[4]`。自定义等待不占用 `custom_value`，如需支持应后续单独增加字段或单独配置命令。
 
 ### 6.2 触发反馈帧
 
