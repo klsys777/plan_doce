@@ -224,10 +224,10 @@ payload：
 |------|------|------|------|
 | 0 | `display_channel` | 1 | 显示/采样通道，从 0 开始，决定触发后反馈哪一路数据 |
 | 1 | `trigger_relation` | 1 | 条件关系，从 0 开始 |
-| 2 | `trigger_channel_A` | 1 | A 触发对象，从 0 开始 |
+| 2 | `trigger_channel_A` | 1 | A 触发对象，按“触发对象”表取值 |
 | 3 | `trigger_condition_A` | 1 | A 触发条件，从 0 开始 |
 | 4~7 | `custom_value_A` | 4 | A 阈值放大 100 后的 int32，小端 |
-| 8 | `trigger_channel_B` | 1 | B 触发对象，从 0 开始 |
+| 8 | `trigger_channel_B` | 1 | B 触发对象，按“触发对象”表取值 |
 | 9 | `trigger_condition_B` | 1 | B 触发条件，从 0 开始 |
 | 10~13 | `custom_value_B` | 4 | B 阈值放大 100 后的 int32，小端 |
 
@@ -240,7 +240,7 @@ payload：
 | `2` | `A&&B` | 条件 A 与条件 B 同时成立 |
 | `3` | `A||B` | 条件 A 或条件 B 任一成立 |
 
-通道/触发对象：
+显示通道：
 
 | 值 | 通道 |
 |----|------|
@@ -251,6 +251,53 @@ payload：
 | `4` | `id` |
 | `5` | `vel` |
 | `6` | `pos` |
+
+触发对象：
+
+| 值 | 对象 | 说明 |
+|----|------|------|
+| `0` | 空 | 无条件触发。下位机收到任一触发对象为“空”时直接触发，忽略对应 `trigger_condition` 和 `custom_value` |
+| `1` | `ia` | A 相电流 |
+| `2` | `ib` | B 相电流 |
+| `3` | `ic` | C 相电流 |
+| `4` | `iq` | q 轴电流 |
+| `5` | `id` | d 轴电流 |
+| `6` | `vel` | 速度 |
+| `7` | `pos` | 位置 |
+| `8` | `error` | 错误码触发。上位机选择该对象时，`custom_value` 发送 `FF FF 00 00`（即 `0x0000FFFF`），不管当前是什么错误码，只要 `motor.warn_faultStatus != 0` 就触发 |
+
+故障/警告错误码候选：
+
+| 值 | 名称 | 说明 |
+|----|------|------|
+| `0` | - | 无故障/无警告 |
+| `1` | `ENC_ERROR_HS` | 高速端编码器无数据 |
+| `2` | `ENC_ERROR_LS` | 低速端编码器无数据 |
+| `3` | `ERROR_OC` | 软件过流/过载 |
+| `4` | `ERROR_OV` | 实际速度超速 |
+| `5` | `ERROR_hard` | 硬件 DRV8353 故障 |
+| `6` | `ERROR_HVolt` | 软件过压 |
+| `7` | `ERROR_LVolt` | 软件欠压 |
+| `8` | `ERROR_CALI` | 编码器标定失败 |
+| `9` | `ERROR_POSREF` | 位置指令异常超速 |
+| `10` | `ERROR_OT` | MTU3 中断持续时间超时 |
+| `11` | `ERROR_LACKPHASE` | 缺相故障 |
+| `12` | `ERROR_FLYCAR` | 异常飞车 |
+| `13` | `ERROR_WrongMotorID` | 电机类型故障 |
+| `16` | `ERROR_Motor_OverTemp` | 电机过温故障 |
+| `17` | `ERROR_Mos_OverTemp` | MOS 过温故障 |
+| `18` | `ERROR_Servo_Invalid` | SERVO 状态切换异常 |
+| `19` | `ERROR_Position_Limit` | 位置超限故障 |
+| `20` | `ERROR_COgging_W_ERR` | 齿槽转矩写入异常 |
+| `21` | `ERROR_kt` | KT 写入结果异常 |
+| `256` | `Warning_I2T` | I2T 过热警告 |
+| `257` | `ERROR_IMAX` | IMAX 值异常警告 |
+| `258` | `ERROR_VMAX` | VMAX 值异常警告 |
+| `259` | `ERROR_E2PROM` | E2PROM 读写警告 |
+| `260` | `Warning_PHY` | PHY 芯片温度过热警告 |
+| `261` | `Warning_Rsampling` | 采样电阻阻值不一致 |
+| `262` | `Warning_Block_Wait` | 堵转提示 |
+
 
 触发条件：
 
@@ -268,7 +315,7 @@ payload：
 trigger_channel_value trigger_condition custom_value
 ```
 
-完整触发表达式由 `trigger_relation` 选择 `A`、`B`、`A&&B` 或 `A||B`，显示数据由 `display_channel` 单独选择。例如显示 `iq`，触发条件为 `iq > 20.00 && vel < 100.00`：`display_channel=3`，`trigger_relation=2`，A 条件 `trigger_channel_A=3`、`trigger_condition_A=0`、`custom_value_A=2000`，B 条件 `trigger_channel_B=5`、`trigger_condition_B=1`、`custom_value_B=10000`。上位机输入最多两位小数，下发前执行 `round(input * 100)`，再按 int32 小端写入对应的 `custom_value[4]`。自定义等待不占用 `custom_value`，如需支持应后续单独增加字段或单独配置命令。
+完整触发表达式由 `trigger_relation` 选择 `A`、`B`、`A&&B` 或 `A||B`，显示数据由 `display_channel` 单独选择。若触发对象为“空”，下位机收到配置后直接触发，`trigger_condition` 和 `custom_value` 不参与判断。若触发对象为 `error`，上位机将对应 `custom_value` 填为 `FF FF 00 00`，任意非 0 错误码都会触发。例如显示 `iq`，触发条件为 `iq > 20.00 && vel < 100.00`：`display_channel=3`，`trigger_relation=2`，A 条件 `trigger_channel_A=4`、`trigger_condition_A=0`、`custom_value_A=2000`，B 条件 `trigger_channel_B=6`、`trigger_condition_B=1`、`custom_value_B=10000`。上位机输入最多两位小数，下发前执行 `round(input * 100)`，再按 int32 小端写入对应的 `custom_value[4]`。自定义等待不占用 `custom_value`，如需支持应后续单独增加字段或单独配置命令。
 
 ### 6.2 触发反馈帧
 
@@ -330,17 +377,17 @@ display_value = value / 10.0
 | `MOT_ID` | `01` |
 | `display_channel` | `03`，即显示 `iq` |
 | `trigger_relation` | `02`，即 `A&&B` |
-| `trigger_channel_A` | `03`，即 `iq` |
+| `trigger_channel_A` | `04`，即 `iq` |
 | `trigger_condition_A` | `00`，即 `>` |
 | `custom_value_A` | `D0 07 00 00`，int32 `2000`，即 `20.00 * 100`，小端 |
-| `trigger_channel_B` | `05`，即 `vel` |
+| `trigger_channel_B` | `06`，即 `vel` |
 | `trigger_condition_B` | `01`，即 `<` |
 | `custom_value_B` | `10 27 00 00`，int32 `10000`，即 `100.00 * 100`，小端 |
 
 完整帧：
 
 ```
-AA 55 10 20 01 03 02 03 00 D0 07 00 00 05 01 10 27 00 00 4D 01
+AA 55 10 20 01 03 02 04 00 D0 07 00 00 06 01 10 27 00 00 4F 01
 ```
 
 触发后反馈第 0 包数据：
@@ -376,3 +423,5 @@ AA 55 10 20 01 03 02 03 00 D0 07 00 00 05 01 10 27 00 00 4D 01
 3. `0x1C~0x1F OTA` 主要走 CAN 桥接，UART 直连固件未完整处理。
 4. `RECOVER_FAC(0x11)` 当前固件 UART 侧不是完整恢复出厂实现。
 5. 修改 `FRAME_ID`、`paraType`、触发通道编号时，上下位机必须同步。
+
+
