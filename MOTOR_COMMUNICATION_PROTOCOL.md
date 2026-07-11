@@ -264,7 +264,7 @@ payload：
 | `5` | `id` | d 轴电流 |
 | `6` | `vel` | 速度 |
 | `7` | `pos` | 位置 |
-| `8` | `error` | 错误码触发。上位机选择该对象时，`custom_value` 发送 `FF FF 00 00`（即 `0x0000FFFF`），不管当前是什么错误码，只要 `motor.warn_faultStatus != 0` 就触发 |
+| `8` | `error` | 错误码触发。上位机输入目标错误码后仍按统一规则执行 `round(input * 100)` 写入 `custom_value`；例如输入 `5` 等待硬件 DRV8353 故障，输入 `1000` 表示任意非 0 错误码都会触发 |
 
 故障/警告错误码候选：
 
@@ -315,7 +315,9 @@ payload：
 trigger_channel_value trigger_condition custom_value
 ```
 
-完整触发表达式由 `trigger_relation` 选择 `A`、`B`、`A&&B` 或 `A||B`，显示数据由 `display_channel` 单独选择。若触发对象为“NULL”，下位机收到配置后直接触发，`trigger_condition` 和 `custom_value` 不参与判断。若触发对象为 `error`，上位机将对应 `custom_value` 填为 `FF FF 00 00`，任意非 0 错误码都会触发。例如显示 `iq`，触发条件为 `iq > 20.00 && vel < 100.00`：`display_channel=3`，`trigger_relation=2`，A 条件 `trigger_channel_A=4`、`trigger_condition_A=0`、`custom_value_A=2000`，B 条件 `trigger_channel_B=6`、`trigger_condition_B=1`、`custom_value_B=10000`。上位机输入最多两位小数，下发前执行 `round(input * 100)`，再按 int32 小端写入对应的 `custom_value[4]`。自定义等待不占用 `custom_value`，如需支持应后续单独增加字段或单独配置命令。
+完整触发表达式由 `trigger_relation` 选择 `A`、`B`、`A&&B` 或 `A||B`，显示数据由 `display_channel` 单独选择。若触发对象为“NULL”，下位机收到配置后直接触发，`trigger_condition` 和 `custom_value` 不参与判断。若触发对象为 `error`，上位机输入目标错误码后仍按统一规则执行 `round(input * 100)` 写入 `custom_value`，下位机按缩放前的错误码判断；只有 `motor.warn_faultStatus` 等于该错误码时触发，特殊输入值 `1000` 表示任意非 0 错误码都会触发。例如输入 `5` 时 `custom_value=500`，表示等待硬件 DRV8353 故障；输入 `1000` 时 `custom_value=100000`，表示等待任意故障/警告。
+
+例如显示 `iq`，触发条件为 `iq > 20.00 && vel < 100.00`：`display_channel=3`，`trigger_relation=2`，A 条件 `trigger_channel_A=4`、`trigger_condition_A=0`、`custom_value_A=2000`，B 条件 `trigger_channel_B=6`、`trigger_condition_B=1`、`custom_value_B=10000`。上位机输入最多两位小数，下发前执行 `round(input * 100)`，再按 int32 小端写入对应的 `custom_value[4]`。自定义等待不占用 `custom_value`，如需支持应后续单独增加字段或单独配置命令。
 
 ### 6.2 触发反馈帧
 
@@ -423,5 +425,8 @@ AA 55 10 20 01 03 02 04 00 D0 07 00 00 06 01 10 27 00 00 4F 01
 3. `0x1C~0x1F OTA` 主要走 CAN 桥接，UART 直连固件未完整处理。
 4. `RECOVER_FAC(0x11)` 当前固件 UART 侧不是完整恢复出厂实现。
 5. 修改 `FRAME_ID`、`paraType`、触发通道编号时，上下位机必须同步。
+
+
+
 
 
