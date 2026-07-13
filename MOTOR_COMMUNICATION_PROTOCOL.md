@@ -215,7 +215,7 @@ UART_FRAME_PARA_UPDATE_TRIG_CFG = 0x20
 发送帧：
 
 ```
-AA 55 10 20 MOT_ID display_channel trigger_relation trigger_channel_A trigger_condition_A custom_value_A[4] trigger_channel_B trigger_condition_B custom_value_B[4] CHK_L CHK_H
+AA 55 11 20 MOT_ID display_channel pre_trigger trigger_relation trigger_channel_A trigger_condition_A custom_value_A[4] trigger_channel_B trigger_condition_B custom_value_B[4] CHK_L CHK_H
 ```
 
 payload：
@@ -223,13 +223,14 @@ payload：
 | 偏移 | 字段 | 长度 | 说明 |
 |------|------|------|------|
 | 0 | `display_channel` | 1 | 显示/采样通道，从 0 开始，决定触发后反馈哪一路数据 |
-| 1 | `trigger_relation` | 1 | 条件关系，从 0 开始 |
-| 2 | `trigger_channel_A` | 1 | A 触发对象，按“触发对象”表取值 |
-| 3 | `trigger_condition_A` | 1 | A 触发条件，从 0 开始 |
-| 4~7 | `custom_value_A` | 4 | A 阈值放大 100 后的 int32，小端 |
-| 8 | `trigger_channel_B` | 1 | B 触发对象，按“触发对象”表取值 |
-| 9 | `trigger_condition_B` | 1 | B 触发条件，从 0 开始 |
-| 10~13 | `custom_value_B` | 4 | B 阈值放大 100 后的 int32，小端 |
+| 1 | `pre_trigger` | 1 | 预触发比例，单位 %，取值 `0~100` |
+| 2 | `trigger_relation` | 1 | 条件关系，从 0 开始 |
+| 3 | `trigger_channel_A` | 1 | A 触发对象，按“触发对象”表取值 |
+| 4 | `trigger_condition_A` | 1 | A 触发条件，从 0 开始 |
+| 5~8 | `custom_value_A` | 4 | A 阈值放大 100 后的 int32，小端 |
+| 9 | `trigger_channel_B` | 1 | B 触发对象，按“触发对象”表取值 |
+| 10 | `trigger_condition_B` | 1 | B 触发条件，从 0 开始 |
+| 11~14 | `custom_value_B` | 4 | B 阈值放大 100 后的 int32，小端 |
 
 条件关系：
 
@@ -252,11 +253,17 @@ payload：
 | `5` | `vel` |
 | `6` | `pos` |
 
+预触发：
+
+| 字段 | 说明 |
+|------|------|
+| `pre_trigger` | 预触发占比，单位 `%`。总采样点数固定 `N=1024`：`pre_count = N * pre_trigger / 100`，`post_count = N - pre_count`。上传曲线按时间顺序排列，`seq=0` 为最旧点；触发位置约在 `seq = pre_count`。`pre_trigger=0` 表示无预触发，行为与原先一致（触发后才开始采满 1024 点）；例如 `pre_trigger=25` 时，前 256 点为触发前，后 768 点为触发点及触发后。 |
+
 触发对象：
 
 | 值 | 对象 | 说明 |
 |----|------|------|
-| `0` | NULL | 无条件触发。下位机收到任一触发对象为“NULL”时直接触发，忽略对应 `trigger_condition` 和 `custom_value` |
+| `0` | null | 无条件触发。下位机收到任一触发对象为“null”时直接触发，忽略对应 `trigger_condition` 和 `custom_value` |
 | `1` | `ia` | A 相电流 |
 | `2` | `ib` | B 相电流 |
 | `3` | `ic` | C 相电流 |
@@ -315,9 +322,9 @@ payload：
 trigger_channel_value trigger_condition custom_value
 ```
 
-完整触发表达式由 `trigger_relation` 选择 `A`、`B`、`A&&B` 或 `A||B`，显示数据由 `display_channel` 单独选择。若触发对象为“NULL”，下位机收到配置后直接触发，`trigger_condition` 和 `custom_value` 不参与判断。若触发对象为 `error`，上位机输入目标错误码后仍按统一规则执行 `round(input * 100)` 写入 `custom_value`，下位机按缩放前的错误码判断；只有 `motor.warn_faultStatus` 等于该错误码时触发，特殊输入值 `1000` 表示任意非 0 错误码都会触发。例如输入 `5` 时 `custom_value=500`，表示等待硬件 DRV8353 故障；输入 `1000` 时 `custom_value=100000`，表示等待任意故障/警告。
+完整触发表达式由 `trigger_relation` 选择 `A`、`B`、`A&&B` 或 `A||B`，显示数据由 `display_channel` 单独输入，预触发窗口由 `pre_trigger` 下发。若触发对象为“null”，下位机收到配置后直接触发，`trigger_condition` 和 `custom_value` 不参与判断。若触发对象为 `error`，上位机输入目标错误码后仍按统一规则执行 `round(input * 100)` 写入 `custom_value`，下位机按缩放前的错误码判断；只有 `motor.warn_faultStatus` 等于该错误码时触发，特殊输入值 `1000` 表示任意非 0 错误码都会触发。例如输入 `5` 时 `custom_value=500`，表示等待硬件 DRV8353 故障；输入 `1000` 时 `custom_value=100000`，表示等待任意故障/警告。
 
-例如显示 `iq`，触发条件为 `iq > 20.00 && vel < 100.00`：`display_channel=3`，`trigger_relation=2`，A 条件 `trigger_channel_A=4`、`trigger_condition_A=0`、`custom_value_A=2000`，B 条件 `trigger_channel_B=6`、`trigger_condition_B=1`、`custom_value_B=10000`。上位机输入最多两位小数，下发前执行 `round(input * 100)`，再按 int32 小端写入对应的 `custom_value[4]`。自定义等待不占用 `custom_value`，如需支持应后续单独增加字段或单独配置命令。
+例如显示 `iq`，预触发 `25%`，触发条件为 `iq > 20.00 && vel < 100.00`：`display_channel=3`，`pre_trigger=25`，`trigger_relation=2`，A 条件 `trigger_channel_A=4`、`trigger_condition_A=0`、`custom_value_A=2000`，B 条件 `trigger_channel_B=6`、`trigger_condition_B=1`、`custom_value_B=10000`。上位机输入最多两位小数，下发前执行 `round(input * 100)`，再按 int32 小端写入对应的 `custom_value[4]`。自定义等待不占用 `custom_value`，如需支持应后续单独增加字段或单独配置命令。
 
 ### 6.2 触发反馈帧
 
@@ -353,7 +360,7 @@ trigger_channel_value trigger_condition custom_value
 display_value = value / 10.0
 ```
 
-曲线 X 轴建议使用 `seq` 作为横坐标；若某包缺失，可按包内应有 16 组数据补占位点。
+曲线 X 轴建议使用 `seq` 作为横坐标；若某包缺失，可按包内应有 16 组数据补占位点。有预触发时，触发位置约在 `seq = N * pre_trigger / 100`（例如 `pre_trigger=25` 时约在 `seq=256`）。
 
 结束帧：
 
@@ -371,13 +378,14 @@ display_value = value / 10.0
 
 ### 6.3 触发配置例子
 
-配置 `MOT_ID=1`，触发条件 `iq > 20 && vel < 100`：
+配置 `MOT_ID=1`，预触发 `25%`，触发条件 `iq > 20 && vel < 100`：
 
 | 字段 | 值 |
 |------|----|
 | `FRAME_ID` | `20` |
 | `MOT_ID` | `01` |
 | `display_channel` | `03`，即显示 `iq` |
+| `pre_trigger` | `19`，即 `25%` |
 | `trigger_relation` | `02`，即 `A&&B` |
 | `trigger_channel_A` | `04`，即 `iq` |
 | `trigger_condition_A` | `00`，即 `>` |
@@ -389,7 +397,7 @@ display_value = value / 10.0
 完整帧：
 
 ```
-AA 55 10 20 01 03 02 04 00 D0 07 00 00 06 01 10 27 00 00 4F 01
+AA 55 11 20 01 03 19 02 04 00 D0 07 00 00 06 01 10 27 00 00 69 01
 ```
 
 触发后反馈第 0 包数据：
