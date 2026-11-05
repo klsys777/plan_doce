@@ -41,7 +41,7 @@ flowchart TB
     BUS <--> HW
 ```
 
-业务模块不直接拼厂家报文或操作外设寄存器。协议模块只负责编解码；通信设备模块负责收发、忙闲和硬件错误。配置表统一保存关节与硬件的对应关系。
+业务模块不直接拼厂家报文或操作外设寄存器。软件分层表示职责边界，不要求每层都单独建文件，外设寄存器操作仍由 BSP 完成。
 
 ## 3. 主、副 MCU 分工
 
@@ -139,11 +139,15 @@ main()
 
 ### 5.2 EtherCAT 回调边界
 
+沿用现有 `User/ethercat/GDESC_IO_motor.c` 实现下列应用回调。当前 `APPL_OutputMapping()` 拷贝数据后直接调用 `motor_ctl_task()`，`APPL_Application()` 尚无业务逻辑；后续按下表调整，电机发送由非阻塞调度推进。
+
 | 入口 | 拟定职责 |
 | --- | --- |
 | `APPL_OutputMapping()` | 拷贝 RxPDO 到待处理缓冲，不直接执行电机发送 |
 | `APPL_Application()` | 提交本周期命令快照、记录周期事件；不阻塞等待回复 |
 | `APPL_InputMapping()` | 拷贝已发布的反馈快照到 TxPDO，不现场读取传感器 |
+| `APPL_GenerateMapping()` | 根据对象字典计算 PDO 长度，与当前锁定角色、EEPROM 和 ESI 配置一致 |
+| `APPL_StartOutputHandler()` / `APPL_StopOutputHandler()` | 更新 EtherCAT 输出有效条件；退出 OP 时撤销该控制源的运动许可，不直接阻塞发送电机报文 |
 | CAN / UART / I²C 中断 | 收发搬运和事件通知，不执行整手业务 |
 
 SSC 的应用回调可能在中断上下文执行，缓冲交接应使用双缓冲和短临界区，避免半更新数据。拟采用“同步事件触发、主循环有界处理”的方案；若实测调度延迟不能满足指标，再调整实时执行位置。
@@ -204,37 +208,38 @@ SSC 的应用回调可能在中断上下文执行，缓冲交接应使用双缓�
 
 在 EtherCAT 模式，主站负责跨从站的整手停机协调，两颗 MCU 各自执行本地保护；CAN FD 模式由主 MCU 发起跨板协调，副 MCU 同时独立监测串口超时。通信断开时无法保证停止报文送达，需结合电机驱动器自身的通信超时功能。具体停机方式及单电机故障是否联动整手待确认。
 
-## 7. 建议文件结构
+## 7. 精简后的文件结构
 
-同名 `.c/.h` 合并展示。按模块描述职责，不逐项罗列函数。
+同名 `.c/.h` 合并展示。下列为目标结构：复用现有 EtherCAT 文件，其余模块在固件适配时逐步整理。
 
 ```text
 User/
 ├─ main.c                       启动与主循环入口
 ├─ App/
-│  ├─ app_main.c/.h             初始化、模式管理与调度
-│  ├─ hand_controller.c/.h      命令检查、主副路由
-│  └─ safety_manager.c/.h       输出许可、超时与故障
+│  ├─ app_main.c/.h             角色锁定、初始化、模式管理与调度
+│  ├─ hand_controller.c/.h      命令检查、主副路由与整手状态汇总
+│  └─ safety_manager.c/.h       输出许可、超时与故障处理
 ├─ Device/
 │  ├─ motor_manager.c/.h        本地电机目标、反馈及发送调度
 │  ├─ tactile_manager.c/.h      A / B 型传感器采集与有效性
 │  ├─ can_bus.c/.h              多路 CAN 非阻塞收发
-│  └─ serial_link.c/.h          主副串口收发及链路状态
+│  └─ serial_link.c/.h          主副串口收发、帧编解码、组帧与心跳
 ├─ Protocol/
-│  ├─ ethercat_app.c/.h         SSC 回调、PDO 与统一命令转换
 │  ├─ canfd_protocol.c/.h       对外 CAN FD 编解码
-│  ├─ inter_mcu_protocol.c/.h   主副串口帧编解码
-│  ├─ motor_protocol.c/.h      ZJ CAN FD 对象读写、反馈及错误解析
-│  └─ tactile_protocol.c/.h    两类触觉数据解析
+│  ├─ motor_protocol.c/.h       ZJ CAN FD 对象读写、反馈及错误解析
+│  └─ tactile_protocol.c/.h     两类触觉数据解析
 ├─ Config/
-│  ├─ board_config.h           角色引脚、模式与外设分配
-│  ├─ hand_config.c/.h         22 关节映射、方向与限位
-│  └─ hand_types.h             统一命令、反馈及状态类型
-├─ BSP/                        角色 GPIO 及 CAN、UART、I²C、RS-485 硬件适配
-└─ ethercat/                   保留 SSC 栈、对象字典和相关配置
+│  ├─ hand_config.c/.h          角色引脚、外设、通信参数、关节映射与限位
+│  └─ hand_types.h             公共角色、命令、反馈及状态类型
+├─ BSP/                         GPIO、CAN、UART、I²C、RS-485 硬件适配
+└─ ethercat/
+   ├─ GDESC_IO_motor.c/.h       复用并适配：应用回调、PDO 与统一数据转换
+   ├─ GDESC_IO_motorObjects.h   适配：对象字典与 PDO 定义
+   ├─ ecat_def.h               SSC 功能与过程数据容量配置
+   └─ 其余 SSC 文件             保留：状态机、同步、CoE / SDO 等协议栈
 
-Firmware/                      GD32 库与 CMSIS
-ESI/                           与主、副角色匹配的从站描述
+Firmware/                      GD32 库、ESC 驱动库与 CMSIS
+ESI/                           与主、副角色及 EEPROM 匹配的从站描述
 MDK-ARM/                       一个通用固件编译目标，主副烧录相同产物
 ```
 
