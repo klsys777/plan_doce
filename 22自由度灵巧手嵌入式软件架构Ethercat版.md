@@ -223,13 +223,12 @@ User/
 │  └─ diagnostics.c/.h          周期时序、总线占用与故障计数（暂不实现）
 ├─ Device/
 │  ├─ motor_manager.c/.h        本地电机目标、反馈及发送调度
-│  ├─ tactile_manager.c/.h      A / B 型传感器采集与有效性
+│  ├─ tactile_manager.c/.h      A / B 型传感器采集、解析与有效性
 │  ├─ can_bus.c/.h              多路 CAN 非阻塞收发
 │  └─ serial_link.c/.h          主副串口收发、帧编解码、组帧与心跳
 ├─ Protocol/
 │  ├─ canfd_protocol.c/.h       对外 CAN FD 编解码
-│  ├─ motor_protocol.c/.h       ZJ CAN FD 对象读写、反馈及错误解析
-│  └─ tactile_protocol.c/.h     两类触觉数据解析
+│  └─ motor_protocol.c/.h       ZJ CAN FD 对象读写、反馈及错误解析
 ├─ Config/
 │  ├─ hand_config.c/.h          角色引脚、外设、通信参数、关节映射与限位
 │  └─ hand_types.h             公共角色、命令、反馈及状态类型
