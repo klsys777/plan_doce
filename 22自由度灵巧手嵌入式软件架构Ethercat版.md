@@ -228,7 +228,8 @@ User/
 │  └─ serial_link.c/.h          主副串口收发、帧编解码、组帧与心跳
 ├─ Protocol/
 │  ├─ canfd_protocol.c/.h       对外 CAN FD 编解码（直接操作本路邮箱）
-│  └─ motor_protocol.c/.h       ZJ CAN FD 对象读写、反馈及错误解析
+│  ├─ motor_protocol.h         协议公共类型：kind 语义与应答结构
+│  └─ motor_protocol_zhijing.c/.h  指境 CAN FD 编解码：对象映射、帧收发与错误解析
 ├─ Config/
 │  ├─ hand_config.c/.h          角色引脚、外设、通信参数、关节映射与限位
 │  └─ hand_types.h             公共角色、命令、反馈及状态类型
